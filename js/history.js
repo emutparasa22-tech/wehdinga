@@ -148,7 +148,6 @@ function initializeDatePickers() {
     maxDate: maxDate,
     defaultDate: null,
     onDayCreate: function(dObj, dStr, fp, dayElem) {
-      // Mark days that have data
       const date = dayElem.dateObj;
       const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       
@@ -158,7 +157,6 @@ function initializeDatePickers() {
         dayElem.classList.add('no-data');
       }
       
-      // Disable dates that are after the selected end date (if any)
       if (toPicker && toPicker.selectedDates.length > 0) {
         const endDate = toPicker.selectedDates[0];
         if (date > endDate) {
@@ -167,11 +165,9 @@ function initializeDatePickers() {
       }
     },
     onMonthChange: function(selectedDates, dateStr, instance) {
-      // Refresh calendar when month changes to apply constraints
       setTimeout(() => instance.redraw(), 0);
     },
     onYearChange: function(selectedDates, dateStr, instance) {
-      // Refresh calendar when year changes to apply constraints
       setTimeout(() => instance.redraw(), 0);
     },
     onReady: function(selectedDates, dateStr, instance) {
@@ -188,7 +184,6 @@ function initializeDatePickers() {
     maxDate: maxDate,
     defaultDate: null,
     onDayCreate: function(dObj, dStr, fp, dayElem) {
-      // Mark days that have data
       const date = dayElem.dateObj;
       const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       
@@ -198,7 +193,6 @@ function initializeDatePickers() {
         dayElem.classList.add('no-data');
       }
       
-      // Disable dates that are before the selected start date (if any)
       if (fromPicker && fromPicker.selectedDates.length > 0) {
         const startDate = fromPicker.selectedDates[0];
         if (date < startDate) {
@@ -207,11 +201,9 @@ function initializeDatePickers() {
       }
     },
     onMonthChange: function(selectedDates, dateStr, instance) {
-      // Refresh calendar when month changes to apply constraints
       setTimeout(() => instance.redraw(), 0);
     },
     onYearChange: function(selectedDates, dateStr, instance) {
-      // Refresh calendar when year changes to apply constraints
       setTimeout(() => instance.redraw(), 0);
     },
     onReady: function(selectedDates, dateStr, instance) {
@@ -227,173 +219,151 @@ function initializeDatePickers() {
 // ============== APPLY FILTER ===============
 filterBtn.addEventListener("click", () => {
   const dateFromValue = dateFromInput.value;
-  const dateToValue = dateToInput.value;
+  const dateToValue   = dateToInput.value;
   const timeFromValue = timeFromInput.value;
-  const timeToValue = timeToInput.value;
+  const timeToValue   = timeToInput.value;
 
-  console.log("Filter applied - Start Date:", dateFromValue, "End Date:", dateToValue);
-  console.log("Filter applied - Start Time:", timeFromValue, "End Time:", timeToValue);
+  console.log("Filter applied - Start Date:", dateFromValue, "| End Date:", dateToValue);
+  console.log("Filter applied - Start Time:", timeFromValue, "| End Time:", timeToValue);
 
-  // Validate dates are required
+  // --- Validate: dates are required ---
   if (!dateFromValue || !dateToValue) {
-    alert("Please select both start date and end date");
+    alert("Please select both start date and end date.");
     return;
   }
 
-  // Validate time inputs: both must be filled or both must be empty
+  // --- Validate: time fields must both be filled OR both be empty ---
   if (timeFromValue && !timeToValue) {
     alert("Please select 'Time To'. Both time fields must be filled.");
     return;
   }
-
   if (!timeFromValue && timeToValue) {
     alert("Please select 'Time From'. Both time fields must be filled.");
     return;
   }
 
-  // Parse selected dates
+  // --- Parse selected dates (date portion only, no time component) ---
   const dateFrom = new Date(dateFromValue);
-  const dateTo = new Date(dateToValue);
+  const dateTo   = new Date(dateToValue);
 
   if (dateFrom > dateTo) {
-    alert("Start date cannot be after end date");
+    alert("Start date cannot be after end date.");
     return;
   }
 
-  // Validate time range if both times are provided
+  // Strip time from boundaries so date comparisons are date-only
+  const fromDateOnly = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), dateFrom.getDate());
+  const toDateOnly   = new Date(dateTo.getFullYear(),   dateTo.getMonth(),   dateTo.getDate());
+
   if (timeFromValue && timeToValue) {
-    // Parse time values (format: "HH:MM")
+    // ==========================================================
+    // FILTER: DATE RANGE + TIME WINDOW (applied to EVERY day)
+    //
+    // The selected time window is enforced on ALL days in range.
+    //
+    // Example — Date: Mar 1–3, Time: 12:00 AM–12:30 AM
+    //   ✅ Mar 1 records with time between 00:00–00:30
+    //   ✅ Mar 2 records with time between 00:00–00:30
+    //   ✅ Mar 3 records with time between 00:00–00:30
+    //   ❌ Any record outside 00:00–00:30 on any of those days
+    // ==========================================================
+
     const [fromHours, fromMinutes] = timeFromValue.split(':').map(Number);
-    const [toHours, toMinutes] = timeToValue.split(':').map(Number);
+    const [toHours,   toMinutes  ] = timeToValue.split(':').map(Number);
 
-    // Create date objects with time for comparison
-    const timeFrom = new Date(dateFrom);
-    timeFrom.setHours(fromHours, fromMinutes, 0, 0);
+    const fromTotalMinutes = fromHours * 60 + fromMinutes;
+    const toTotalMinutes   = toHours   * 60 + toMinutes;
 
-    const timeTo = new Date(dateTo);
-    timeTo.setHours(toHours, toMinutes, 59, 999);
-
-    // Check if same date and time from >= time to
-    if (dateFromValue === dateToValue && timeFromValue >= timeToValue) {
-      alert("Time From must be earlier than Time To");
+    // Time From must be strictly before Time To
+    if (fromTotalMinutes >= toTotalMinutes) {
+      alert("'Time From' must be earlier than 'Time To'.");
       return;
     }
 
-    // Filter data with DATE and TIME RANGE
-    let filtered = historyData.filter(item => {
+    const filtered = historyData.filter(item => {
       const itemDate = new Date(item.timestamp);
-      
-      // For precise time filtering, we need to check if the item falls within the range
-      // Convert item time to minutes for easier comparison
-      const itemHours = itemDate.getHours();
-      const itemMinutes = itemDate.getMinutes();
-      const itemTotalMinutes = itemHours * 60 + itemMinutes;
-      
-      const fromTotalMinutes = fromHours * 60 + fromMinutes;
-      const toTotalMinutes = toHours * 60 + toMinutes;
-      
-      // Get date only (without time) for comparison
-      const itemDateOnly = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
-      const fromDateOnly = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), dateFrom.getDate());
-      const toDateOnly = new Date(dateTo.getFullYear(), dateTo.getMonth(), dateTo.getDate());
-      
-      // If item is before the start date or after the end date, exclude it
+
+      // Step 1: Item's date must fall within the selected date range
+      const itemDateOnly = new Date(
+        itemDate.getFullYear(),
+        itemDate.getMonth(),
+        itemDate.getDate()
+      );
+
       if (itemDateOnly < fromDateOnly || itemDateOnly > toDateOnly) {
         return false;
       }
-      
-      // If item is on the start date, check if time is >= start time
-      if (itemDateOnly.getTime() === fromDateOnly.getTime()) {
-        if (itemTotalMinutes < fromTotalMinutes) {
-          return false;
-        }
+
+      // Step 2: Item's time-of-day must fall within [timeFrom, timeTo]
+      //         This applies to EVERY day in the range equally.
+      const itemTotalMinutes = itemDate.getHours() * 60 + itemDate.getMinutes();
+
+      if (itemTotalMinutes < fromTotalMinutes || itemTotalMinutes > toTotalMinutes) {
+        return false;
       }
-      
-      // If item is on the end date, check if time is <= end time
-      if (itemDateOnly.getTime() === toDateOnly.getTime()) {
-        if (itemTotalMinutes > toTotalMinutes) {
-          return false;
-        }
-      }
-      
+
       return true;
     });
 
-    console.log("Historical records matching filter (with time):", filtered.length);
+    console.log("Filtered records (date range + time window on every day):", filtered.length);
 
-    // Sort data
     const sortOrder = sortSelect.value;
-    filtered.sort((a, b) => {
-      if (sortOrder === "oldest") {
-        return a.timestamp - b.timestamp;
-      } else {
-        return b.timestamp - a.timestamp;
-      }
-    });
+    filtered.sort((a, b) =>
+      sortOrder === "oldest"
+        ? a.timestamp - b.timestamp
+        : b.timestamp - a.timestamp
+    );
 
-    console.log("Total filtered results:", filtered.length, "records");
-    
-    // Store filtered data and reset to page 1
     filteredData = filtered;
-    currentPage = 1;
-    
+    currentPage  = 1;
     renderTable();
     renderPagination();
+
   } else {
-    // Filter data for DATE RANGE ONLY (no time filtering)
-    let filtered = historyData.filter(item => {
+    // ==========================================================
+    // FILTER: DATE RANGE ONLY (no time restriction)
+    // All records on every day within [fromDate, toDate] are shown.
+    // ==========================================================
+
+    const filtered = historyData.filter(item => {
       const itemDate = new Date(item.timestamp);
-      
-      // Set time to start of day for comparison
-      const itemDateOnly = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
-      const fromDateOnly = new Date(dateFrom.getFullYear(), dateFrom.getMonth(), dateFrom.getDate());
-      const toDateOnly = new Date(dateTo.getFullYear(), dateTo.getMonth(), dateTo.getDate());
-      
+      const itemDateOnly = new Date(
+        itemDate.getFullYear(),
+        itemDate.getMonth(),
+        itemDate.getDate()
+      );
       return itemDateOnly >= fromDateOnly && itemDateOnly <= toDateOnly;
     });
 
-    console.log("Historical records matching filter (date only):", filtered.length);
+    console.log("Filtered records (date range only):", filtered.length);
 
-    // Sort data
     const sortOrder = sortSelect.value;
-    filtered.sort((a, b) => {
-      if (sortOrder === "oldest") {
-        return a.timestamp - b.timestamp;
-      } else {
-        return b.timestamp - a.timestamp;
-      }
-    });
+    filtered.sort((a, b) =>
+      sortOrder === "oldest"
+        ? a.timestamp - b.timestamp
+        : b.timestamp - a.timestamp
+    );
 
-    console.log("Total filtered results:", filtered.length, "records");
-    
-    // Store filtered data and reset to page 1
     filteredData = filtered;
-    currentPage = 1;
-    
+    currentPage  = 1;
     renderTable();
     renderPagination();
   }
 });
 
 // ============== ADD EVENT LISTENERS FOR DATE SELECTION ===============
-// When start date changes, refresh end date picker to show proper constraints
 dateFromInput.addEventListener("change", () => {
-  if (toPicker) {
-    setTimeout(() => toPicker.redraw(), 100);
-  }
+  if (toPicker) setTimeout(() => toPicker.redraw(), 100);
 });
 
-// When end date changes, refresh start date picker to show proper constraints
 dateToInput.addEventListener("change", () => {
-  if (fromPicker) {
-    setTimeout(() => fromPicker.redraw(), 100);
-  }
+  if (fromPicker) setTimeout(() => fromPicker.redraw(), 100);
 });
 
 // ============== CLEAR TIME BUTTON ===============
 clearTimeBtn.addEventListener("click", () => {
   timeFromInput.value = '';
-  timeToInput.value = '';
+  timeToInput.value   = '';
   console.log("Time filters cleared");
 });
 
@@ -407,29 +377,28 @@ function renderTable() {
         <td colspan="6" style="text-align: center; padding: 40px;">
           <i class="fas fa-info-circle" style="font-size: 2em; color: #0ea5e9; margin-bottom: 10px;"></i>
           <div style="font-size: 1.1em; font-weight: 600; color: #334155; margin-top: 10px;">No Data Available</div>
-          <div style="font-size: 0.95em; color: #64748b; margin-top: 5px;">There are no records for the selected date range</div>
+          <div style="font-size: 0.95em; color: #64748b; margin-top: 5px;">There are no records for the selected date and time range</div>
         </td>
       </tr>
     `;
-    const paginationInfo = document.getElementById('paginationInfo');
+    const paginationInfo     = document.getElementById('paginationInfo');
     const paginationControls = document.getElementById('paginationControls');
-    if (paginationInfo) paginationInfo.innerHTML = '';
+    if (paginationInfo)     paginationInfo.innerHTML     = '';
     if (paginationControls) paginationControls.innerHTML = '';
-    
+
     updateExportButton();
     return;
   }
 
   // Calculate pagination
   const startIndex = (currentPage - 1) * recordsPerPage;
-  const endIndex = Math.min(startIndex + recordsPerPage, filteredData.length);
-  const pageData = filteredData.slice(startIndex, endIndex);
+  const endIndex   = Math.min(startIndex + recordsPerPage, filteredData.length);
+  const pageData   = filteredData.slice(startIndex, endIndex);
 
   // Render rows for current page
   pageData.forEach(d => {
     const date = new Date(d.timestamp).toLocaleString();
-
-    const row = document.createElement("tr");
+    const row  = document.createElement("tr");
     row.innerHTML = `
       <td><strong>${date}</strong></td>
       <td class="${getColorClass('temperature', d.temperature)}">${d.temperature !== undefined ? d.temperature.toFixed(1) : "--"}</td>
@@ -441,9 +410,7 @@ function renderTable() {
     historyBody.appendChild(row);
   });
 
-  // Update info display
   updatePaginationInfo(startIndex + 1, endIndex, filteredData.length);
-  
   updateExportButton();
 }
 
@@ -457,9 +424,9 @@ function updatePaginationInfo(start, end, total) {
 
 // ============== RENDER PAGINATION CONTROLS ===============
 function renderPagination() {
-  const totalPages = Math.ceil(filteredData.length / recordsPerPage);
+  const totalPages          = Math.ceil(filteredData.length / recordsPerPage);
   const paginationContainer = document.getElementById('paginationControls');
-  
+
   if (!paginationContainer || totalPages <= 1) {
     if (paginationContainer) paginationContainer.innerHTML = '';
     return;
@@ -477,7 +444,7 @@ function renderPagination() {
   // Page numbers
   const maxVisiblePages = 5;
   let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-  let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+  let endPage   = Math.min(totalPages, startPage + maxVisiblePages - 1);
 
   if (endPage - startPage + 1 < maxVisiblePages) {
     startPage = Math.max(1, endPage - maxVisiblePages + 1);
@@ -519,12 +486,11 @@ function renderPagination() {
 function goToPage(page) {
   const totalPages = Math.ceil(filteredData.length / recordsPerPage);
   if (page < 1 || page > totalPages) return;
-  
+
   currentPage = page;
   renderTable();
   renderPagination();
-  
-  // Scroll to top of table
+
   const table = document.querySelector('.history-table');
   if (table) {
     table.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -533,26 +499,24 @@ function goToPage(page) {
 
 // ============== SUBMENU SWITCHING ===============
 function showDataView() {
-  const dataSection = document.getElementById('dataViewSection');
+  const dataSection      = document.getElementById('dataViewSection');
   const analyticsSection = document.getElementById('analyticsSection');
-  
-  if (dataSection) dataSection.style.display = 'block';
+
+  if (dataSection)      dataSection.style.display      = 'block';
   if (analyticsSection) analyticsSection.style.display = 'none';
-  
-  // Update active submenu
+
   document.querySelectorAll('.submenu-item').forEach(item => item.classList.remove('active'));
   const dataViewTab = document.getElementById('dataViewTab');
   if (dataViewTab) dataViewTab.classList.add('active');
 }
 
 function showAnalytics() {
-  const dataSection = document.getElementById('dataViewSection');
+  const dataSection      = document.getElementById('dataViewSection');
   const analyticsSection = document.getElementById('analyticsSection');
-  
-  if (dataSection) dataSection.style.display = 'none';
+
+  if (dataSection)      dataSection.style.display      = 'none';
   if (analyticsSection) analyticsSection.style.display = 'block';
-  
-  // Update active submenu
+
   document.querySelectorAll('.submenu-item').forEach(item => item.classList.remove('active'));
   const analyticsTab = document.getElementById('analyticsTab');
   if (analyticsTab) analyticsTab.classList.add('active');
@@ -560,34 +524,31 @@ function showAnalytics() {
 
 // ============== EXPORT FUNCTIONALITY ===============
 
-// Enable/disable export button based on filtered data
 function updateExportButton() {
   const exportBtn = document.getElementById('exportBtn');
   if (exportBtn) {
     if (filteredData.length > 0) {
-      exportBtn.disabled = false;
+      exportBtn.disabled      = false;
       exportBtn.style.opacity = '1';
-      exportBtn.style.cursor = 'pointer';
+      exportBtn.style.cursor  = 'pointer';
     } else {
-      exportBtn.disabled = true;
+      exportBtn.disabled      = true;
       exportBtn.style.opacity = '0.5';
-      exportBtn.style.cursor = 'not-allowed';
+      exportBtn.style.cursor  = 'not-allowed';
     }
   }
 }
 
-// Toggle export dropdown menu
 document.addEventListener('DOMContentLoaded', function() {
-  const exportBtn = document.getElementById('exportBtn');
+  const exportBtn  = document.getElementById('exportBtn');
   const exportMenu = document.getElementById('exportMenu');
-  
+
   if (exportBtn && exportMenu) {
     exportBtn.addEventListener('click', function(e) {
       e.stopPropagation();
       exportMenu.classList.toggle('show');
     });
-    
-    // Close dropdown when clicking outside
+
     document.addEventListener('click', function(e) {
       if (!e.target.closest('.export-dropdown')) {
         exportMenu.classList.remove('show');
@@ -596,23 +557,21 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// Generate timestamp for filename
 function getTimestamp() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
+  const now     = new Date();
+  const year    = now.getFullYear();
+  const month   = String(now.getMonth() + 1).padStart(2, '0');
+  const day     = String(now.getDate()).padStart(2, '0');
+  const hours   = String(now.getHours()).padStart(2, '0');
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const seconds = String(now.getSeconds()).padStart(2, '0');
   return `${year}-${month}-${day}_${hours}${minutes}${seconds}`;
 }
 
-// Calculate summary statistics
 function calculateStats(data) {
   const params = ['temperature', 'ph', 'salinity', 'turbidity', 'do'];
-  const stats = {};
-  
+  const stats  = {};
+
   params.forEach(param => {
     const values = data.map(d => d[param]).filter(v => v !== undefined && v !== null);
     if (values.length > 0) {
@@ -623,47 +582,36 @@ function calculateStats(data) {
       };
     }
   });
-  
+
   return stats;
 }
 
-// Main export function
 function exportData(format) {
-  // Close dropdown menu
   const exportMenu = document.getElementById('exportMenu');
   if (exportMenu) exportMenu.classList.remove('show');
-  
-  // Check if data is available
+
   if (filteredData.length === 0) {
-    alert('No data to export. Please apply a date filter first.');
+    alert('No data to export. Please apply a filter first.');
     return;
   }
-  
-  // Show loading overlay
+
   const loadingOverlay = document.getElementById('exportLoading');
   if (loadingOverlay) loadingOverlay.classList.add('show');
-  
-  // Get date range for filename and header
-  const dateFrom = dateFromInput.value || 'N/A';
-  const dateTo = dateToInput.value || 'N/A';
+
+  const dateFrom  = dateFromInput.value || 'N/A';
+  const dateTo    = dateToInput.value   || 'N/A';
   const timestamp = getTimestamp();
-  const filename = `fishda_history_${timestamp}`;
-  
-  // Delay to show loading animation
+  const filename  = `fishda_history_${timestamp}`;
+
   setTimeout(() => {
     try {
-      if (format === 'csv') {
-        exportToCSV(filename, dateFrom, dateTo);
-      } else if (format === 'excel') {
-        exportToExcel(filename, dateFrom, dateTo);
-      } else if (format === 'pdf') {
-        exportToPDF(filename, dateFrom, dateTo);
-      }
-      
-      // Hide loading and show success
+      if (format === 'csv')   exportToCSV(filename, dateFrom, dateTo);
+      if (format === 'excel') exportToExcel(filename, dateFrom, dateTo);
+      if (format === 'pdf')   exportToPDF(filename, dateFrom, dateTo);
+
       if (loadingOverlay) loadingOverlay.classList.remove('show');
       showExportSuccess(format);
-      
+
     } catch (error) {
       console.error('Export error:', error);
       if (loadingOverlay) loadingOverlay.classList.remove('show');
@@ -672,102 +620,85 @@ function exportData(format) {
   }, 500);
 }
 
-// Export to CSV
 function exportToCSV(filename, dateFrom, dateTo) {
   let csv = '';
-  
-  // Add header info
   csv += `FISHDA Historical Data Export\n`;
   csv += `Export Date: ${new Date().toLocaleString()}\n`;
   csv += `Date Range: ${dateFrom} to ${dateTo}\n`;
   csv += `Total Records: ${filteredData.length}\n\n`;
-  
-  // Add column headers
   csv += 'Date & Time,Temperature (°C),pH,Salinity (ppt),Turbidity (NTU),DO (mg/L)\n';
-  
-  // Add data rows
+
   filteredData.forEach(item => {
     const date = new Date(item.timestamp).toLocaleString();
     csv += `${date},`;
     csv += `${item.temperature !== undefined ? item.temperature.toFixed(1) : 'N/A'},`;
-    csv += `${item.ph !== undefined ? item.ph.toFixed(2) : 'N/A'},`;
-    csv += `${item.salinity !== undefined ? item.salinity.toFixed(1) : 'N/A'},`;
-    csv += `${item.turbidity !== undefined ? item.turbidity.toFixed(1) : 'N/A'},`;
-    csv += `${item.do !== undefined ? item.do.toFixed(1) : 'N/A'}\n`;
+    csv += `${item.ph         !== undefined ? item.ph.toFixed(2)          : 'N/A'},`;
+    csv += `${item.salinity   !== undefined ? item.salinity.toFixed(1)    : 'N/A'},`;
+    csv += `${item.turbidity  !== undefined ? item.turbidity.toFixed(1)   : 'N/A'},`;
+    csv += `${item.do         !== undefined ? item.do.toFixed(1)          : 'N/A'}\n`;
   });
-  
-  // Add summary statistics
+
   csv += '\n--- Summary Statistics ---\n';
   csv += 'Parameter,Minimum,Maximum,Average\n';
-  
-  const stats = calculateStats(filteredData);
+
+  const stats       = calculateStats(filteredData);
   const paramLabels = {
     temperature: 'Temperature (°C)',
-    ph: 'pH',
-    salinity: 'Salinity (ppt)',
-    turbidity: 'Turbidity (NTU)',
-    do: 'DO (mg/L)'
+    ph:          'pH',
+    salinity:    'Salinity (ppt)',
+    turbidity:   'Turbidity (NTU)',
+    do:          'DO (mg/L)'
   };
-  
+
   Object.keys(stats).forEach(param => {
     csv += `${paramLabels[param]},`;
     csv += `${stats[param].min.toFixed(2)},`;
     csv += `${stats[param].max.toFixed(2)},`;
     csv += `${stats[param].avg.toFixed(2)}\n`;
   });
-  
-  // Download CSV
+
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
+  link.href     = URL.createObjectURL(blob);
   link.download = `${filename}.csv`;
   link.click();
 }
 
-// Export to Excel
 function exportToExcel(filename, dateFrom, dateTo) {
-  // Create workbook
-  const wb = XLSX.utils.book_new();
-  
-  // Prepare data array
+  const wb   = XLSX.utils.book_new();
   const data = [];
-  
-  // Add header info
+
   data.push(['FISHDA Historical Data Export']);
   data.push(['Export Date:', new Date().toLocaleString()]);
   data.push(['Date Range:', `${dateFrom} to ${dateTo}`]);
   data.push(['Total Records:', filteredData.length]);
-  data.push([]); // Empty row
-  
-  // Add column headers
+  data.push([]);
   data.push(['Date & Time', 'Temperature (°C)', 'pH', 'Salinity (ppt)', 'Turbidity (NTU)', 'DO (mg/L)']);
-  
-  // Add data rows
+
   filteredData.forEach(item => {
     data.push([
       new Date(item.timestamp).toLocaleString(),
       item.temperature !== undefined ? parseFloat(item.temperature.toFixed(1)) : 'N/A',
-      item.ph !== undefined ? parseFloat(item.ph.toFixed(2)) : 'N/A',
-      item.salinity !== undefined ? parseFloat(item.salinity.toFixed(1)) : 'N/A',
-      item.turbidity !== undefined ? parseFloat(item.turbidity.toFixed(1)) : 'N/A',
-      item.do !== undefined ? parseFloat(item.do.toFixed(1)) : 'N/A'
+      item.ph          !== undefined ? parseFloat(item.ph.toFixed(2))          : 'N/A',
+      item.salinity    !== undefined ? parseFloat(item.salinity.toFixed(1))    : 'N/A',
+      item.turbidity   !== undefined ? parseFloat(item.turbidity.toFixed(1))   : 'N/A',
+      item.do          !== undefined ? parseFloat(item.do.toFixed(1))          : 'N/A'
     ]);
   });
-  
-  // Add summary statistics
-  data.push([]); // Empty row
+
+  data.push([]);
   data.push(['--- Summary Statistics ---']);
   data.push(['Parameter', 'Minimum', 'Maximum', 'Average']);
-  
-  const stats = calculateStats(filteredData);
+
+  const stats       = calculateStats(filteredData);
   const paramLabels = {
     temperature: 'Temperature (°C)',
-    ph: 'pH',
-    salinity: 'Salinity (ppt)',
-    turbidity: 'Turbidity (NTU)',
-    do: 'DO (mg/L)'
+    ph:          'pH',
+    salinity:    'Salinity (ppt)',
+    turbidity:   'Turbidity (NTU)',
+    do:          'DO (mg/L)'
   };
-  
+
   Object.keys(stats).forEach(param => {
     data.push([
       paramLabels[param],
@@ -776,68 +707,51 @@ function exportToExcel(filename, dateFrom, dateTo) {
       parseFloat(stats[param].avg.toFixed(2))
     ]);
   });
-  
-  // Create worksheet
+
   const ws = XLSX.utils.aoa_to_sheet(data);
-  
-  // Set column widths
   ws['!cols'] = [
-    { wch: 20 }, // Date & Time
-    { wch: 15 }, // Temperature
-    { wch: 10 }, // pH
-    { wch: 15 }, // Salinity
-    { wch: 15 }, // Turbidity
-    { wch: 12 }  // DO
+    { wch: 20 },
+    { wch: 15 },
+    { wch: 10 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 12 }
   ];
-  
-  // Add worksheet to workbook
+
   XLSX.utils.book_append_sheet(wb, ws, 'Historical Data');
-  
-  // Download Excel file
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
-// Export to PDF
 function exportToPDF(filename, dateFrom, dateTo) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF('p', 'mm', 'a4');
-  
-  // Add header
+
   doc.setFontSize(18);
   doc.setTextColor(14, 165, 233);
   doc.text('FISHDA Historical Data', 14, 20);
-  
+
   doc.setFontSize(10);
   doc.setTextColor(100);
   doc.text(`Export Date: ${new Date().toLocaleString()}`, 14, 28);
-  doc.text(`Date Range: ${dateFrom} to ${dateTo}`, 14, 34);
-  doc.text(`Total Records: ${filteredData.length}`, 14, 40);
-  
-  // Prepare table data
+  doc.text(`Date Range: ${dateFrom} to ${dateTo}`,        14, 34);
+  doc.text(`Total Records: ${filteredData.length}`,       14, 40);
+
   const tableData = filteredData.map(item => [
     new Date(item.timestamp).toLocaleString(),
     item.temperature !== undefined ? item.temperature.toFixed(1) : 'N/A',
-    item.ph !== undefined ? item.ph.toFixed(2) : 'N/A',
-    item.salinity !== undefined ? item.salinity.toFixed(1) : 'N/A',
-    item.turbidity !== undefined ? item.turbidity.toFixed(1) : 'N/A',
-    item.do !== undefined ? item.do.toFixed(1) : 'N/A'
+    item.ph          !== undefined ? item.ph.toFixed(2)          : 'N/A',
+    item.salinity    !== undefined ? item.salinity.toFixed(1)    : 'N/A',
+    item.turbidity   !== undefined ? item.turbidity.toFixed(1)   : 'N/A',
+    item.do          !== undefined ? item.do.toFixed(1)          : 'N/A'
   ]);
-  
-  // Add main data table
+
   doc.autoTable({
     startY: 48,
     head: [['Date & Time', 'Temp (°C)', 'pH', 'Salinity (ppt)', 'Turbidity (NTU)', 'DO (mg/L)']],
     body: tableData,
     theme: 'striped',
-    headStyles: {
-      fillColor: [14, 165, 233],
-      textColor: 255,
-      fontStyle: 'bold',
-      halign: 'center'
-    },
-    bodyStyles: {
-      fontSize: 9
-    },
+    headStyles:  { fillColor: [14, 165, 233], textColor: 255, fontStyle: 'bold', halign: 'center' },
+    bodyStyles:  { fontSize: 9 },
     columnStyles: {
       0: { cellWidth: 38 },
       1: { cellWidth: 20, halign: 'center' },
@@ -848,18 +762,17 @@ function exportToPDF(filename, dateFrom, dateTo) {
     },
     margin: { left: 14, right: 14 }
   });
-  
-  // Calculate summary statistics
-  const stats = calculateStats(filteredData);
-  const statsData = [];
+
+  const stats       = calculateStats(filteredData);
+  const statsData   = [];
   const paramLabels = {
     temperature: 'Temperature (°C)',
-    ph: 'pH',
-    salinity: 'Salinity (ppt)',
-    turbidity: 'Turbidity (NTU)',
-    do: 'DO (mg/L)'
+    ph:          'pH',
+    salinity:    'Salinity (ppt)',
+    turbidity:   'Turbidity (NTU)',
+    do:          'DO (mg/L)'
   };
-  
+
   Object.keys(stats).forEach(param => {
     statsData.push([
       paramLabels[param],
@@ -868,28 +781,20 @@ function exportToPDF(filename, dateFrom, dateTo) {
       stats[param].avg.toFixed(2)
     ]);
   });
-  
-  // Add summary statistics table
+
   const finalY = doc.lastAutoTable.finalY + 10;
-  
+
   doc.setFontSize(12);
   doc.setTextColor(14, 165, 233);
   doc.text('Summary Statistics', 14, finalY);
-  
+
   doc.autoTable({
     startY: finalY + 5,
     head: [['Parameter', 'Minimum', 'Maximum', 'Average']],
     body: statsData,
     theme: 'grid',
-    headStyles: {
-      fillColor: [30, 41, 59],
-      textColor: 255,
-      fontStyle: 'bold',
-      halign: 'center'
-    },
-    bodyStyles: {
-      fontSize: 10
-    },
+    headStyles:  { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', halign: 'center' },
+    bodyStyles:  { fontSize: 10 },
     columnStyles: {
       0: { cellWidth: 60 },
       1: { cellWidth: 40, halign: 'center' },
@@ -898,8 +803,7 @@ function exportToPDF(filename, dateFrom, dateTo) {
     },
     margin: { left: 14, right: 14 }
   });
-  
-  // Add footer
+
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -912,47 +816,33 @@ function exportToPDF(filename, dateFrom, dateTo) {
       { align: 'center' }
     );
   }
-  
-  // Download PDF
+
   doc.save(`${filename}.pdf`);
 }
 
-// Show success message
 function showExportSuccess(format) {
-  const formatNames = {
-    csv: 'CSV',
-    excel: 'Excel',
-    pdf: 'PDF'
-  };
-  
-  // Create success notification
+  const formatNames = { csv: 'CSV', excel: 'Excel', pdf: 'PDF' };
+
   const notification = document.createElement('div');
   notification.className = 'export-success';
   notification.innerHTML = `
     <i class="fas fa-check-circle"></i>
     <span>${formatNames[format]} file downloaded successfully!</span>
   `;
-  
+
   document.body.appendChild(notification);
-  
-  // Show notification
-  setTimeout(() => {
-    notification.classList.add('show');
-  }, 100);
-  
-  // Remove notification after 3 seconds
+
+  setTimeout(() => notification.classList.add('show'), 100);
   setTimeout(() => {
     notification.classList.remove('show');
-    setTimeout(() => {
-      notification.remove();
-    }, 300);
+    setTimeout(() => notification.remove(), 300);
   }, 3000);
 }
 
 // Make functions global
-window.goToPage = goToPage;
-window.showDataView = showDataView;
+window.goToPage      = goToPage;
+window.showDataView  = showDataView;
 window.showAnalytics = showAnalytics;
-window.exportData = exportData;
+window.exportData    = exportData;
 
 console.log("✅ history.js fully loaded");
